@@ -1,0 +1,55 @@
+# The dataset consists of the titles (variable title) and abstracts (variable abstract) of papers retrieved
+# in a Pubmed search. Each search result is labeled with whether the paper is a clinical trial testing a drug therapy for cancer (variable trial).
+# These labels were obtained by two people reviewing each search result and accessing the actual paper if necessary, as part of
+# a literature review of clinical trials testing drug therapies for advanced and metastatic breast cancer.
+
+trials = read.csv("./data/clinical_trial.csv",stringsAsFactors = FALSE)
+trials = read.csv("./data/clinical_trial.csv",stringsAsFactors = FALSE,fileEncoding = "latin1")
+a_characters = lapply(trials$abstract,nchar)
+a_characters[which.max(a_characters)]
+sum(a_characters == 0)
+t_characters = lapply(trials$title,nchar)
+trials$title[which.min(t_characters)]
+library(tm)
+corpusTitle = Corpus(VectorSource(trials$title))
+corpusTitle = tm_map(corpusTitle,content_transformer(tolower))
+corpusTitle = tm_map(corpusTitle, PlainTextDocument)
+corpusTitle = tm_map(corpusTitle,removePunctuation)
+corpusTitle = tm_map(corpusTitle,removeWords,stopwords("english"))
+corpusTitle = tm_map(corpusTitle,stemDocument)
+dtmTitle = DocumentTermMatrix(corpusTitle)
+dtmTitle = removeSparseTerms(dtmTitle,0.95)
+dtmTitle = as.data.frame(as.matrix(dtmTitle))
+corpusAbstract = Corpus(VectorSource(trials$abstract))
+corpusAbstract = tm_map(corpusAbstract,content_transformer(tolower))
+corpusAbstract = tm_map(corpusAbstract, PlainTextDocument)
+corpusAbstract = tm_map(corpusAbstract,removePunctuation)
+corpusAbstract = tm_map(corpusAbstract,removeWords,stopwords("english"))
+corpusAbstract = tm_map(corpusAbstract,stemDocument)
+dtmAbstract = DocumentTermMatrix(corpusAbstract)
+dtmAbstract = removeSparseTerms(dtmAbstract,0.95)
+dtmAbstract = as.data.frame(as.matrix(dtmAbstract))
+colnames(dtmTitle) = paste0("T", colnames(dtmTitle))
+colnames(dtmAbstract) = paste0("A", colnames(dtmAbstract))
+dtm = cbind(dtmTitle, dtmAbstract)
+dtm$trial = trials$trial
+library(caTools)
+ncol(dtm)
+set.seed(144)
+spl = sample.split(trials$trial,SplitRatio = 0.7)
+train = subset(dtm,spl==TRUE)
+test = subset(dtm,spl==FALSE)
+table(train$trial)
+library(rpart)
+library(rpart.plot)
+trialCART = rpart(trial ~.,data=train,method = "class")
+prp(trialCART)
+pred = predict(trialCART,newdata=test)
+pred.prob = pred[,2]
+max(pred.prob)
+table(test$trial,pred.prob >= 0.5)
+predROCR = prediction(pred.prob,test$trial)
+table(test$trial, pred.prob >= 0.5)
+sum(diag(table(test$trial,pred.prob >=0.5)))/nrow(test)
+performanceROCR = performance(predROCR,"tpr","fpr")
+performance(predROCR,"auc")@y.values
